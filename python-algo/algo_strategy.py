@@ -160,7 +160,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         else:
             # Now let's analyze the enemy base to see where their defenses are concentrated.
             # If they have many units in the front we can build a line for our demolishers to attack them at long range.
-            if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 21]) > 10:
+            if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
                 self.demolisher_line_strategy(game_state)
             else:
                 # They don't have many units in the front so lets figure out their least defended area and send Scouts there.
@@ -196,6 +196,27 @@ class AlgoStrategy(gamelib.AlgoCore):
                 if len(turn[1]) > 0:
                     game_state.attempt_spawn(TURRET, turn[1])
 
+    def check_if_all_can_be_built(self, game_state, turn):
+        reqPoints = 0
+        types = [game_state.type_cost(WALL)[SP], game_state.type_cost(TURRET)[SP], 1.5]
+
+        for i in range(len(turn)):
+            if i < 2:
+                locations = turn[i]
+                for location in locations:
+                    if not game_state.contains_stationary_unit(location):
+                        reqPoints += types[i]
+            else:
+                locations = turn[i]
+                for location in locations:
+                    for unit in game_state.game_map[location]:
+                        if not unit.upgraded:
+                            reqPoints += 1.5
+
+        gamelib.debug_write("Points Required are: " + str(reqPoints))
+        gamelib.debug_write("Current Points: " + str(game_state.get_resource(SP)))
+        return reqPoints
+
     def build_reactive_defense(self, game_state):
         """
         This function builds reactive defenses based on where the enemy scored on us from.
@@ -207,7 +228,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             build_location = [location[0], location[1] + 1]
             game_state.attempt_spawn(TURRET, build_location)
 
-    def stall_with_interceptors(self, game_state):
+    def stall_with_interceptors(self, game_state, num=5):
         """
         Send out interceptors at random locations to defend our base from enemy moving units.
         """
@@ -218,17 +239,11 @@ class AlgoStrategy(gamelib.AlgoCore):
         # since we can't deploy units there.
         deploy_locations = self.filter_blocked_locations(friendly_edges, game_state)
 
-        # While we have remaining MP to spend lets send out interceptors randomly.
-        while game_state.get_resource(MP) >= game_state.type_cost(INTERCEPTOR)[MP] and len(deploy_locations) > 0:
-            # Choose a random deploy location.
+        for i in range(num):
             deploy_index = random.randint(0, len(deploy_locations) - 1)
             deploy_location = deploy_locations[deploy_index]
 
             game_state.attempt_spawn(INTERCEPTOR, deploy_location)
-            """
-            We don't have to remove the location since multiple mobile 
-            units can occupy the same space.
-            """
 
     def demolisher_line_strategy(self, game_state):
         """
@@ -266,6 +281,15 @@ class AlgoStrategy(gamelib.AlgoCore):
                     if unit.player_index == 1 and (unit_type is None or unit.unit_type == unit_type) and (valid_x is None or location[0] in valid_x) and (valid_y is None or location[1] in valid_y):
                         total_units += 1
         return total_units
+
+    def total_enemy_points(self, game_state, valid_x=None, valid_y=None):
+        total_points = 0
+        for location in game_state.game_map:
+            if game_state.contains_stationary_unit(location):
+                for unit in game_state.game_map[location]:
+                    if unit.player_index == 1 and (valid_x is None or location[0] in valid_x) and (valid_y is None or location[1] in valid_y):
+                        total_points += game_state.type_cost(unit.unit_type)[SP]
+        return total_points
 
     def filter_blocked_locations(self, locations, game_state):
         filtered = []
